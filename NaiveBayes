@@ -1,0 +1,389 @@
+package pack;
+
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.HashMap;
+
+public class NaiveBayes {
+	static int NumberOfFeatures = 7; 
+	public static void main(String[] args) {
+		 
+	     int arrLength = 100;
+		 double[][] trainingData = new double[arrLength][];
+	     int[] trainingLabels = new int[arrLength];
+	     double[][] testingData = new double[arrLength][]; 
+	     int[] testingLabels = new int[arrLength]; 
+	     int totalLines = 0;
+	     double probabilityLiked;
+	     double probabilityDisliked;
+	     try {
+	         // You may need to change the path:        	        	
+	         totalLines = loadData("bin\\training-set.csv", trainingData, trainingLabels);            
+	         loadData("bin\\testing-set.csv", testingData, testingLabels);          
+	     } 
+	     catch (IOException e) {
+	         System.out.println("Error reading data files: " + e.getMessage());
+	         return;
+	     }
+	     
+	    
+	     int likedCount = 0;
+	       boolean liked_it;
+	     for (int i = 0; i < trainingData.length; i++) {
+	          if (trainingLabels[i] == 0) {
+	        	  liked_it = false;
+	          } else {
+	        	  liked_it = true;
+	        	  likedCount++;
+	          }
+	         
+	        }
+	     	probabilityLiked = (double) likedCount/totalLines; //prior probability
+	     	probabilityDisliked = (double) (totalLines - likedCount)/totalLines; //prior probability
+	     	
+	     
+	        HashMap<String, Integer> totalGenreCounts = new HashMap<>();
+
+	        for (int i = 0; i < trainingData.length; i++) {
+	            // Assuming genre is stored in the first element of the feature vector
+	            String genre = convertGenreCodeToGenre((int) trainingData[i][0]);
+
+	            // Update the count in the HashMap
+	            totalGenreCounts.put(genre, totalGenreCounts.getOrDefault(genre, 0) + 1);
+	        }
+	        int runTimeBinCounts[] = {0,0,0,0};
+	        for (int i = 0; i < trainingData.length; i++) {
+	      	  String runT = categorizeRuntime(trainingData[i][2]); 
+	      			  switch (runT) {
+	      			  case "90-100":
+	      				  runTimeBinCounts[0]++;
+	      			  case "100-110":
+	      				runTimeBinCounts[1]++;
+	      			  case "110-120":
+	      				runTimeBinCounts[2]++;
+	      			  case "120+":
+	      				runTimeBinCounts[3]++;
+	      			  }
+	        }
+	        
+		    HashMap<String, Integer> likedGenreCounts = countLikedGenres(trainingData, trainingLabels);
+	        HashMap<String, Integer> likedRuntimeBins = countLikedRuntimeBins(trainingData, trainingLabels);
+	       // HashMap<String, Integer> totalRuntimeBins = countLikedRuntimeBins(trainingData, trainingLabels);
+	        HashMap<Double, Integer> likedYearCounts = countLikedValues(trainingData, trainingLabels, 1);
+	        HashMap<Double, Integer> likedIMDbCounts = countLikedValues(trainingData, trainingLabels, 3);
+	        HashMap<String, Integer> likedRTCounts = countLikedRT(trainingData, trainingLabels); // Assuming IMDb is the 8th column (index 7)
+	        HashMap<String, Integer> likedBudgetCounts = countLikedBudget(trainingData, trainingLabels); // Assuming IMDb is the 8th column (index 7)
+	        HashMap<Double, Integer> likedBoxOfficeCounts = countLikedValues(trainingData, trainingLabels, 6); // Assuming IMDb is the 8th column (index 7)
+
+	        // Print the counts
+	        for (String genre : likedGenreCounts.keySet()) {
+	            int count = likedGenreCounts.get(genre);
+	            int total = totalGenreCounts.get(genre);
+	            double probabilityGenreLiked = findProbability(count, total);
+	            //we need to divide the liked movies of the genre by the number of movies in that genre
+	            System.out.println("genre: " + genre + ", total movies: " + total + ". Liked movies: " + count + ", Probability that this genre will be liked: " + probabilityGenreLiked + ", dislike probability: " + (1.0 - probabilityGenreLiked));
+	            
+	        	System.out.println("our prediction: " + prediction(probabilityGenreLiked));
+	        }
+	        
+	        
+	        for (String runtimeBin : likedRuntimeBins.keySet()) {
+	            int count = likedRuntimeBins.get(runtimeBin);
+	           
+	            System.out.println("Liked movies with runtime in bin " + runtimeBin + ": " + count  + ". Probability: " + );
+	        }
+	        System.out.println("bin 1 total: " + runTimeBinCounts[0] + " bin 2 total: " + runTimeBinCounts[1] + " bin 3 total: " + runTimeBinCounts[2] + " bin 4 total: " + runTimeBinCounts[3]);
+	       
+
+	        for (Double year : likedYearCounts.keySet()) {
+	            int count = likedYearCounts.get(year);
+	            System.out.println("Liked movies in year " + year + ": " + count  + ". Probability: " + findProbability(count, likedCount));
+	        }
+	        
+
+	      
+	        for (Double imdb : likedIMDbCounts.keySet()) {
+	            int count = likedIMDbCounts.get(imdb);
+	            System.out.println("Liked movies with IMDb " + imdb + ": " + count  + ". Probability: " + findProbability(count, likedCount));
+	        }
+	        
+	        for (String rt : likedRTCounts.keySet()) {
+	            int count = likedRTCounts.get(rt);
+	            System.out.println("Liked movies with RT " + rt + ": " + count  + ". Probability: " + findProbability(count, likedCount));
+	        }
+	        
+
+	       
+	        for (String budget : likedBudgetCounts.keySet()) {
+	            int count = likedBudgetCounts.get(budget);
+	            System.out.println("Liked movies with budget " + budget + ": " + count  + ". Probability: " + findProbability(count, likedCount));
+	        }
+	        
+
+	        for (Double BO : likedBoxOfficeCounts.keySet()) {
+	            int count = likedBoxOfficeCounts.get(BO);
+	            System.out.println("Liked movies with Box Office Revenue " + BO + ": " + count  + ". Probability: " + findProbability(count, likedCount));
+	        }
+	}
+	     
+	
+	static int loadData(String filePath, double[][] dataFeatures, int[] dataLabels) throws IOException {
+	     try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
+	         String line;
+	         int idx = 0;
+	         br.readLine(); // skip header line
+	         while ((line = br.readLine()) != null) {
+	             String[] values = line.split(",");
+	             // Assuming csv format: MovieID,Title,Genre,Runtime,Year,Lead Actor,Director,IMDB,RT(%),Budget,Box Office Revenue (in million $),Like it
+	             double id = Double.parseDouble(values[0]);
+	             String genre = values[2];
+	             double runtime = Double.parseDouble(values[3]);               
+	             double year = Double.parseDouble(values[4]);
+	             double imdb = Double.parseDouble(values[7]);                
+	             double rt = Double.parseDouble(values[8]);  
+	             double budget = Double.parseDouble(values[9]);  
+	             double boxOffice = Double.parseDouble(values[10]);  
+	           //  double liked = Double.parseDouble(values[11]);
+	             
+	             //Title, director and leadActor are not used because there's too many unique values in those columns
+	             //You can implement them if you please, though. Or if we need more accuracy. Current best I got: 67% (this is thanks to genre)
+	             dataFeatures[idx] = toFeatureVector(id, genre, runtime, year, imdb, rt, budget, boxOffice);
+	             
+	             dataLabels[idx] = Integer.parseInt(values[11]); // Assuming the label is the last column and is numeric
+	             idx++;
+	            
+	             
+	         }
+	         return idx;
+	      
+	     }
+	}
+	static double[] toFeatureVector(double id, String genre, double runtime, double year, double imdb, double rt, double budget, double boxOffice) {
+    double[] feature = new double[NumberOfFeatures]; 
+    //feature[0] = id; // this is pointless as it is the ID of the movie and doesn't mean much.
+    
+   
+    switch (genre) { // We also use represent each movie genre as an integer number:
+        case "Action":  feature[0] = 7; break; //I fixed the numbers up so that genre is actually useful. I'll explain it in the word doc.
+        case "Drama":   feature[0] = 1; break;
+        case "Romance": feature[0] = 3; break;
+        case "Sci-Fi": feature[0] = 6; break;
+        case "Adventure": feature[0] = 4; break;
+        case "Horror": feature[0] = 2; break;
+        case "Mystery": feature[0] = 0; break;
+        case "Thriller": feature[0] = 5; break;  
+    }
+    feature[1] = year;
+    feature[2] = runtime;
+    feature[3] = imdb;
+    feature[4] = rt;
+    feature[5] = budget;
+    feature[6] = boxOffice;
+    return feature;
+	}
+	
+	static HashMap<String, Integer> countLikedGenres(double[][] dataFeatures, int[] dataLabels) {
+        HashMap<String, Integer> likedGenreCounts = new HashMap<>();
+        for (int i = 0; i < dataFeatures.length; i++) {
+            boolean liked = dataLabels[i] == 1;
+            String genre = convertGenreCodeToGenre((int) dataFeatures[i][0]);
+            likedGenreCounts.put(genre, likedGenreCounts.getOrDefault(genre, 0) + (liked ? 1 : 0));
+        }
+
+        return likedGenreCounts;
+    }
+
+    static String convertGenreCodeToGenre(int genreCode) {
+        switch (genreCode) {
+            case 0: return "Mystery";
+            case 1: return "Drama";
+            case 2: return "Horror";
+            case 3: return "Romance";
+            case 4: return "Adventure";
+            case 5: return "Thriller";
+            case 6: return "Sci-Fi";
+            case 7: return "Action";
+            default: return "Unknown";
+        }
+    }
+    
+    static HashMap<Double, Integer> countLikedRuntimes(double[][] dataFeatures, int[] dataLabels) {
+        HashMap<Double, Integer> likedRuntimeCounts = new HashMap<>();
+
+        for (int i = 0; i < dataFeatures.length; i++) {
+            boolean liked = dataLabels[i] == 1;
+            double runtime = dataFeatures[i][3]; 
+            likedRuntimeCounts.put(runtime, likedRuntimeCounts.getOrDefault(runtime, 0) + (liked ? 1 : 0));
+        }
+
+        return likedRuntimeCounts;
+    }
+    
+    
+    static HashMap<String, Integer> countLikedRuntimeBins(double[][] dataFeatures, int[] dataLabels) {
+        HashMap<String, Integer> likedRuntimeBins = new HashMap<>();
+        for (int i = 0; i < dataFeatures.length; i++) {
+            boolean liked = dataLabels[i] == 1;
+            double runtime = dataFeatures[i][2];
+            String runtimeBin = categorizeRuntime(runtime);
+            likedRuntimeBins.put(runtimeBin, likedRuntimeBins.getOrDefault(runtimeBin, 0) + (liked ? 1 : 0));
+        }
+
+        return likedRuntimeBins;
+    }
+
+
+    static String categorizeRuntime(double runtime) {
+        if (runtime >= 90 && runtime < 100) {
+            return "90-100";
+        } else if (runtime >= 100 && runtime < 110) {
+            return "100-110";
+        } else if (runtime >= 110 && runtime < 120) {
+            return "110-120";
+        } else {
+            return "120+";
+        }
+    }
+    
+    static String categorizeBoxOffice(double runtime) {
+        if (runtime >= 90 && runtime < 100) {
+            return "90-100";
+        } else if (runtime >= 100 && runtime < 110) {
+            return "100-110";
+        } else if (runtime >= 110 && runtime < 120) {
+            return "110-120";
+        } else {
+            return "120+";
+        }
+    }
+    
+    static String categorizeBudget(double budget) {
+        if (budget < 50) {
+            return "< 50";
+        } else if (budget >= 50 && budget < 60) {
+            return "50-59";
+        } else if (budget >= 60 && budget < 69) {
+            return "60-69";
+        } else if (budget >= 70 && budget < 80) {
+            return "70-79";
+        } else if (budget >= 80 && budget < 90) {
+            return "80-99";
+        } else if (budget >= 90 && budget < 100) {
+            return "90-99";
+        } else if (budget >= 100 && budget < 110) {
+            return "100-119";
+        } else if (budget >= 120 && budget < 129) {
+            return "120-129";
+        } else if (budget >= 130 && budget < 139) {
+            return "130-139";
+        } else {
+            return "140+";
+        }
+    }
+    
+    
+    static String categorizeRT(double RT) {
+        if (RT < 70) {
+            return "< 70";
+        } else if (RT >= 70 && RT < 75) {
+            return "70-74";
+        } else if (RT >= 75 && RT < 80) {
+            return "75-79";
+        } else if (RT >= 80 && RT < 85) {
+            return "80-84";
+        } else if (RT >= 85 && RT < 90) {
+            return "85-89";
+        } else if (RT >= 90 && RT < 95) {
+            return "90-94";
+        } else {
+        	return "> 95";
+        }
+    }
+ 
+    static HashMap<Double, Integer> countLikedYears(double[][] dataFeatures, int[] dataLabels) {
+        HashMap<Double, Integer> likedYearCounts = new HashMap<>();
+
+        	for (int i = 0; i < dataFeatures.length; i++) {
+            boolean liked = dataLabels[i] == 1;
+            double year = dataFeatures[i][1];
+            if (liked) {
+                likedYearCounts.put(year, likedYearCounts.getOrDefault(year, 0) + 1);
+            }
+        }
+
+        return likedYearCounts;
+    }
+    
+    static HashMap<String, Integer> countLikedBudget(double[][] dataFeatures, int[] dataLabels) {
+    	 	HashMap<String, Integer> likedBudgetBins = new HashMap<>();
+    	 	for (int i = 0; i < dataFeatures.length; i++) {
+             	boolean liked = dataLabels[i] == 1;
+             	double runtime = dataFeatures[i][5];
+             	String runtimeBin = categorizeBudget(runtime);
+             	likedBudgetBins.put(runtimeBin, likedBudgetBins.getOrDefault(runtimeBin, 0) + (liked ? 1 : 0));
+    	 	}
+         return likedBudgetBins;
+  }
+    
+    
+    static HashMap<String, Integer> countLikedRT(double[][] dataFeatures, int[] dataLabels) {
+   	 HashMap<String, Integer> likedRTBins = new HashMap<>();
+
+        for (int i = 0; i < dataFeatures.length; i++) {
+            boolean liked = dataLabels[i] == 1;
+            double RT = dataFeatures[i][4];
+
+            //runtime into bins
+            String runtimeBin = categorizeRT(RT);
+
+           likedRTBins.put(runtimeBin, likedRTBins.getOrDefault(runtimeBin, 0) + (liked ? 1 : 0));
+        }
+
+        return likedRTBins;
+ }
+    
+    
+    static HashMap<Double, Integer> countLikedValues(double[][] dataFeatures, int[] dataLabels, int columnIndex) {
+        HashMap<Double, Integer> likedValueCounts = new HashMap<>();
+
+        for (int i = 0; i < dataFeatures.length; i++) {
+            boolean liked = dataLabels[i] == 1;
+
+            double value = dataFeatures[i][columnIndex];
+
+            // Update the count in the HashMap
+            if (liked) {
+                likedValueCounts.put(value, likedValueCounts.getOrDefault(value, 0) + 1);
+            }
+        }
+
+        return likedValueCounts;
+    }
+
+
+  
+    
+    
+    static double findProbability(double count, double likedCount) {
+    	 if (likedCount != 0) {
+    	        return (double) count / likedCount;
+    	    } else {
+    	        return 0.0;
+    	    }
+    }
+    
+   // P = Liked / Liked + Disliked
+    static boolean prediction(double likedP) {
+    	
+    	if (likedP >= 0.5) {
+    		return true;
+    	} else {
+    		return false;
+    	}
+    	
+    	
+    }
+   
+
+}
